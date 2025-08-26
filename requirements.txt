@@ -1,5 +1,5 @@
-echo amadeus==12.0.0 > requirements.txt
-echo requests >> requirements.txt
-echo schedule >> requirements.txt
-echo tenacity >> requirements.txt
-echo pytz==2025.2 >> requirements.txt
+amadeus==12.0.0
+requests
+schedule
+tenacity
+pytz==2025.2
