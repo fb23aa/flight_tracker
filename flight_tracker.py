@@ -8,6 +8,10 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 import smtplib
 from email.mime.text import MIMEText
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Environment variables
 API_KEY = os.getenv('AMADEUS_API_KEY')
@@ -131,10 +135,10 @@ def fetch_round_trips(days=31):
     print(f"Using current date (PST): {today}, querying from {start_date}")
     round_prices = {}
     round_prices_bag2 = {}
-    for i in range(0, days - 1):
+    for i in range(0, days - 2):  # Adjusted for 48h max layover
         dep_date = (start_date + timedelta(days=i)).strftime('%Y-%m-%d')
         for cls in CLASSES:
-            for delta in [0, 1]:
+            for delta in [0, 1, 2]:  # Same day, next day, or two days later
                 return_date = (start_date + timedelta(days=i + delta)).strftime('%Y-%m-%d')
                 key = f"{dep_date}-{return_date}-{cls}"
                 print(f"Querying round trip PPT-LAX-PPT: {key}")
@@ -194,14 +198,14 @@ def compute_cheapest(one_way_prices, round_prices, round_prices_bag2):
     best_round_one_way_combo = None
     today = datetime.now(pytz.timezone('America/Los_Angeles')).date()
     start_date = today + timedelta(days=1)
-    for i in range(0, 30):
+    for i in range(0, 29):  # Adjusted for 48h max layover
         out_date_str = (start_date + timedelta(days=i)).strftime('%Y-%m-%d')
         for out_cls in CLASSES:
             out_key = f"{out_date_str}-{out_cls}"
             if out_key not in one_way_prices['PPT-LAX']:
                 continue
             out_details = one_way_prices['PPT-LAX'][out_key]
-            for delta in [0, 1]:
+            for delta in [0, 1, 2]:
                 ret_i = i + delta
                 if ret_i >= 31:
                     continue
@@ -343,7 +347,7 @@ def track_flights():
 
 def run_scheduler():
     print("Starting scheduler")
-    schedule.every().day.at("08:00").do(track_flights)
+    schedule.every(6).hours.do(track_flights)  # Run every 6 hours
     while True:
         schedule.run_pending()
         time.sleep(60)
