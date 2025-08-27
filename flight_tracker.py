@@ -24,11 +24,11 @@ CLASSES = ['ECONOMY', 'PREMIUM_ECONOMY', 'BUSINESS']
 PREV_DATA_FILE = 'previous_data.json'
 
 # Initialize Amadeus client for test API
-amadeus = Client(client_id=API_KEY, client_secret=API_SECRET, hostname='test')
-print("Initialized Amadeus client for test API (test.api.amadeus.com)")
+# amadeus = Client(client_id=API_KEY, client_secret=API_SECRET, hostname='test')
+# print("Initialized Amadeus client for test API (test.api.amadeus.com)")
 # For production API, uncomment:
-# amadeus = Client(client_id=API_KEY, client_secret=API_SECRET, hostname='production')
-# print("Initialized Amadeus client for production API (api.amadeus.com)")
+amadeus = Client(client_id=API_KEY, client_secret=API_SECRET, hostname='production')
+print("Initialized Amadeus client for production API (api.amadeus.com)")
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
 def get_flight_details(origin, dest, dep_date, travel_class, is_round=False, return_date=None):
