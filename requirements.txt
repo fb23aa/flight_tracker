@@ -3,3 +3,4 @@ requests
 schedule
 tenacity
 pytz==2025.2
+python-dotenv
