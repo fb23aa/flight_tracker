@@ -48,6 +48,7 @@ def get_flight_details(origin, dest, dep_date, travel_class, is_round=False, ret
         print(f"API call successful for {origin}->{dest} on {dep_date} ({travel_class})")
         if response.data:
             print(f"Found {len(response.data)} flights")
+            valid_offers = []
             for offer in sorted(response.data, key=lambda x: float(x['price']['total'])):
                 if len(offer['itineraries'][0]['segments']) > 1:
                     print(f"Skipping non-direct outbound: {len(offer['itineraries'][0]['segments'])} segments")
@@ -66,7 +67,7 @@ def get_flight_details(origin, dest, dep_date, travel_class, is_round=False, ret
                         print(f"Skipping round trip with invalid layover {layover} (must be 7–48h)")
                         continue
                     print(f"Valid round trip with layover {layover}")
-                    return {
+                    valid_offers.append({
                         'price': float(offer['price']['total']),
                         'outbound_departure': offer['itineraries'][0]['segments'][0]['departure']['at'],
                         'outbound_arrival': offer['itineraries'][0]['segments'][0]['arrival']['at'],
@@ -77,26 +78,29 @@ def get_flight_details(origin, dest, dep_date, travel_class, is_round=False, ret
                         'baggage': baggage,
                         'return_baggage': return_baggage,
                         'layover': str(layover)
-                    }
-                if origin == 'LAX' and dest == 'PPT':
-                    if not (baggage.get('quantity', 0) >= 1 or baggage.get('weight', 0) >= 1):
-                        print(f"Skipping offer with no checked luggage: {baggage}")
-                        continue
-                    print(f"Valid offer with baggage: {baggage}")
-                return {
-                    'price': float(offer['price']['total']),
-                    'departure_time': offer['itineraries'][0]['segments'][0]['departure']['at'],
-                    'arrival_time': offer['itineraries'][0]['segments'][0]['arrival']['at'],
-                    'airline': offer['itineraries'][0]['segments'][0]['carrierCode'],
-                    'baggage': baggage
-                }
+                    })
+                else:
+                    if origin == 'LAX' and dest == 'PPT':
+                        if not (baggage.get('quantity', 0) >= 1 or baggage.get('weight', 0) >= 1):
+                            print(f"Skipping offer with no checked luggage: {baggage}")
+                            continue
+                        print(f"Valid offer with baggage: {baggage}")
+                    valid_offers.append({
+                        'price': float(offer['price']['total']),
+                        'departure_time': offer['itineraries'][0]['segments'][0]['departure']['at'],
+                        'arrival_time': offer['itineraries'][0]['segments'][0]['arrival']['at'],
+                        'airline': offer['itineraries'][0]['segments'][0]['carrierCode'],
+                        'baggage': baggage
+                    })
+            if valid_offers:
+                return valid_offers[0]  # Return cheapest valid offer
         print(f"No valid flights found for {origin}->{dest} on {dep_date} ({travel_class})")
         return None
     except ResponseError as error:
         print(f"Error for {origin}->{dest} on {dep_date} ({travel_class}): {error.response.body if error.response else error}")
         return None
 
-def fetch_one_way_prices(days=31):
+def fetch_one_way_prices(days=14):  # Reduced to 14 days
     print("Starting fetch_one_way_prices")
     today = datetime.now(pytz.timezone('America/Los_Angeles')).date()
     start_date = today + timedelta(days=1)
@@ -106,6 +110,7 @@ def fetch_one_way_prices(days=31):
         dep_date = (start_date + timedelta(days=i)).strftime('%Y-%m-%d')
         for cls in CLASSES:
             key = f"{dep_date}-{cls}"
+            # PPT -> LAX
             print(f"Querying PPT->LAX: {key}")
             details = get_flight_details('PPT', 'LAX', dep_date, cls)
             if details:
@@ -114,6 +119,7 @@ def fetch_one_way_prices(days=31):
             else:
                 print(f"No data for PPT->LAX {key}")
             time.sleep(1)
+            # LAX -> PPT
             print(f"Querying LAX->PPT: {key}")
             details = get_flight_details('LAX', 'PPT', dep_date, cls)
             if details:
@@ -128,17 +134,17 @@ def fetch_one_way_prices(days=31):
     print(f"Finished fetch_one_way_prices: {len(prices['PPT-LAX'])} PPT->LAX, {len(prices['LAX-PPT'])} LAX->PPT, {len(prices['LAX-PPT-BAG2'])} LAX->PPT-BAG2 entries")
     return prices
 
-def fetch_round_trips(days=31):
+def fetch_round_trips(days=14):  # Reduced to 14 days
     print("Starting fetch_round_trips")
     today = datetime.now(pytz.timezone('America/Los_Angeles')).date()
     start_date = today + timedelta(days=1)
     print(f"Using current date (PST): {today}, querying from {start_date}")
     round_prices = {}
     round_prices_bag2 = {}
-    for i in range(0, days - 2):  # Adjusted for 48h max layover
+    for i in range(0, days - 1):  # 13 days for same/next-day returns
         dep_date = (start_date + timedelta(days=i)).strftime('%Y-%m-%d')
         for cls in CLASSES:
-            for delta in [0, 1, 2]:  # Same day, next day, or two days later
+            for delta in [0, 1]:  # Same or next day
                 return_date = (start_date + timedelta(days=i + delta)).strftime('%Y-%m-%d')
                 key = f"{dep_date}-{return_date}-{cls}"
                 print(f"Querying round trip PPT-LAX-PPT: {key}")
@@ -171,7 +177,7 @@ def compute_cheapest(one_way_prices, round_prices, round_prices_bag2):
     if cheapest_ret_bag2:
         print(f"Cheapest LAX->PPT (2+ bags): {cheapest_ret_bag2['price']} (Date: {list(filter(lambda k: one_way_prices['LAX-PPT-BAG2'][k] is cheapest_ret_bag2, one_way_prices['LAX-PPT-BAG2'].keys()))[0]})")
     else:
-        print("No LAX->PPT (2+ bags) flights found")
+        print("No LAX->PPT (2+ bags) found")
     min_round_price = float('inf')
     best_round_combo = None
     for key, details in round_prices.items():
@@ -193,21 +199,21 @@ def compute_cheapest(one_way_prices, round_prices, round_prices_bag2):
     if best_round_combo_bag2:
         print(f"Cheapest round-trip (2+ bags on return, 7–48h layover): {min_round_price_bag2} (Outbound: {best_round_combo_bag2['outbound_departure']}, Return: {best_round_combo_bag2['return_departure']}, Layover: {best_round_combo_bag2['layover']})")
     else:
-        print("No valid round-trip (2+ bags on return, 7–48h layover) combinations found")
+        print("No valid round-trip (2+ bags on return, 7–48h layover) found")
     min_round_one_way_price = float('inf')
     best_round_one_way_combo = None
     today = datetime.now(pytz.timezone('America/Los_Angeles')).date()
     start_date = today + timedelta(days=1)
-    for i in range(0, 29):  # Adjusted for 48h max layover
+    for i in range(0, days - 1):
         out_date_str = (start_date + timedelta(days=i)).strftime('%Y-%m-%d')
         for out_cls in CLASSES:
             out_key = f"{out_date_str}-{out_cls}"
             if out_key not in one_way_prices['PPT-LAX']:
                 continue
             out_details = one_way_prices['PPT-LAX'][out_key]
-            for delta in [0, 1, 2]:
+            for delta in [0, 1]:
                 ret_i = i + delta
-                if ret_i >= 31:
+                if ret_i >= days:
                     continue
                 ret_date_str = (start_date + timedelta(days=ret_i)).strftime('%Y-%m-%d')
                 for ret_cls in CLASSES:
@@ -240,7 +246,7 @@ def compute_cheapest(one_way_prices, round_prices, round_prices_bag2):
     if best_round_one_way_combo:
         print(f"Cheapest round-trip equivalent (7–48h layover): {min_round_one_way_price} (Outbound: {best_round_one_way_combo['out_date']}, Return: {best_round_one_way_combo['ret_date']}, Layover: {best_round_one_way_combo['layover']})")
     else:
-        print("No valid round-trip equivalent (7–48h layover) combinations found")
+        print("No valid round-trip equivalent (7–48h layover) found")
     return {
         'cheapest_out': cheapest_out['price'] if cheapest_out else None,
         'cheapest_out_details': cheapest_out,
@@ -335,8 +341,8 @@ def send_email_notification(changes):
 def track_flights():
     print("Starting track_flights")
     global one_way_prices
-    one_way_prices = fetch_one_way_prices(days=31)
-    round_prices, round_prices_bag2 = fetch_round_trips(days=31)
+    one_way_prices = fetch_one_way_prices(days=14)
+    round_prices, round_prices_bag2 = fetch_round_trips(days=14)
     new_data = compute_cheapest(one_way_prices, round_prices, round_prices_bag2)
     prev_data = load_previous_data()
     changes = detect_changes(new_data, prev_data)
