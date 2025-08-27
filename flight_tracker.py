@@ -24,8 +24,8 @@ CLASSES = ['ECONOMY', 'PREMIUM_ECONOMY', 'BUSINESS']
 PREV_DATA_FILE = 'previous_data.json'
 
 # Initialize Amadeus client for test API
-# amadeus = Client(client_id=API_KEY, client_secret=API_SECRET, hostname='test')
-# print("Initialized Amadeus client for test API (test.api.amadeus.com)")
+#amadeus = Client(client_id=API_KEY, client_secret=API_SECRET, hostname='test')
+#print("Initialized Amadeus client for test API (test.api.amadeus.com)")
 # For production API, uncomment:
 amadeus = Client(client_id=API_KEY, client_secret=API_SECRET, hostname='production')
 print("Initialized Amadeus client for production API (api.amadeus.com)")
@@ -100,7 +100,7 @@ def get_flight_details(origin, dest, dep_date, travel_class, is_round=False, ret
         print(f"Error for {origin}->{dest} on {dep_date} ({travel_class}): {error.response.body if error.response else error}")
         return None
 
-def fetch_one_way_prices(days=14):  # Reduced to 14 days
+def fetch_one_way_prices(days=14):
     print("Starting fetch_one_way_prices")
     today = datetime.now(pytz.timezone('America/Los_Angeles')).date()
     start_date = today + timedelta(days=1)
@@ -134,17 +134,17 @@ def fetch_one_way_prices(days=14):  # Reduced to 14 days
     print(f"Finished fetch_one_way_prices: {len(prices['PPT-LAX'])} PPT->LAX, {len(prices['LAX-PPT'])} LAX->PPT, {len(prices['LAX-PPT-BAG2'])} LAX->PPT-BAG2 entries")
     return prices
 
-def fetch_round_trips(days=14):  # Reduced to 14 days
+def fetch_round_trips(days=14):
     print("Starting fetch_round_trips")
     today = datetime.now(pytz.timezone('America/Los_Angeles')).date()
     start_date = today + timedelta(days=1)
     print(f"Using current date (PST): {today}, querying from {start_date}")
     round_prices = {}
     round_prices_bag2 = {}
-    for i in range(0, days - 1):  # 13 days for same/next-day returns
+    for i in range(0, days - 1):
         dep_date = (start_date + timedelta(days=i)).strftime('%Y-%m-%d')
         for cls in CLASSES:
-            for delta in [0, 1]:  # Same or next day
+            for delta in [0, 1]:
                 return_date = (start_date + timedelta(days=i + delta)).strftime('%Y-%m-%d')
                 key = f"{dep_date}-{return_date}-{cls}"
                 print(f"Querying round trip PPT-LAX-PPT: {key}")
@@ -161,7 +161,7 @@ def fetch_round_trips(days=14):  # Reduced to 14 days
     print(f"Finished fetch_round_trips: {len(round_prices)} round trips, {len(round_prices_bag2)} round trips with bag=2 on return")
     return round_prices, round_prices_bag2
 
-def compute_cheapest(one_way_prices, round_prices, round_prices_bag2):
+def compute_cheapest(one_way_prices, round_prices, round_prices_bag2, days=14):
     print("Starting compute_cheapest")
     cheapest_out = min(one_way_prices['PPT-LAX'].values(), key=lambda x: x['price']) if one_way_prices['PPT-LAX'] else None
     if cheapest_out:
@@ -343,7 +343,7 @@ def track_flights():
     global one_way_prices
     one_way_prices = fetch_one_way_prices(days=14)
     round_prices, round_prices_bag2 = fetch_round_trips(days=14)
-    new_data = compute_cheapest(one_way_prices, round_prices, round_prices_bag2)
+    new_data = compute_cheapest(one_way_prices, round_prices, round_prices_bag2, days=14)
     prev_data = load_previous_data()
     changes = detect_changes(new_data, prev_data)
     if changes:
